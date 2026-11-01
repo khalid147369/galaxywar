@@ -190,6 +190,7 @@ final class RoomEngineTest {
         engine.command(first.player.id, "fire", attacker.id, defender.id,
             null, null, null, null, null, null);
         assertEquals(2, engine.state().projectiles.size());
+        assertEquals(29, first.player.energy);
         assertThrows(IllegalArgumentException.class, () ->
             engine.command(first.player.id, "fire", attacker.id, "unknown",
                 null, null, null, null, null, null)
@@ -221,6 +222,28 @@ final class RoomEngineTest {
         }
 
         assertTrue(defender.baseHp < 100);
+        assertTrue(engine.state().projectiles.isEmpty());
+    }
+
+    @Test
+    void firingRequiresAndConsumesEnergyOnTheAuthoritativeServer() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult first = engine.addGuest("Pilot");
+        RoomEngine.JoinResult second = engine.addGuest("Rival");
+        RoomState.FleetState attacker = first.player.fleets.get(0);
+        RoomState.FleetState defender = second.player.fleets.get(0);
+        defender.mapX = attacker.mapX;
+        defender.mapY = attacker.mapY;
+        defender.x = attacker.x + 0.1f;
+        defender.y = attacker.y;
+
+        first.player.energy = 0;
+
+        assertThrows(IllegalArgumentException.class, () ->
+            engine.command(first.player.id, "fire", attacker.id, defender.id,
+                null, null, null, null, null, null)
+        );
+        assertEquals(0, first.player.energy);
         assertTrue(engine.state().projectiles.isEmpty());
     }
 

@@ -301,6 +301,7 @@ final class RoomEngine {
         if (distance > BASE_RANGE || now - attacker.lastFireAt < 500L) {
             throw new IllegalArgumentException("Objetivo fuera de alcance o disparo demasiado rápido.");
         }
+        spend(player, 0, 0, 1);
         attacker.lastFireAt = now;
         RoomState.ProjectileState projectile = new RoomState.ProjectileState();
         projectile.id = UUID.randomUUID().toString();

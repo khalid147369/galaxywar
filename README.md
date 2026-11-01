@@ -12,6 +12,8 @@ nueva línea; no es un servidor HTTP ni WebSocket.
 - Validación de órdenes de movimiento, cambios de cuadrícula, disparos,
   reclutamiento, reclamación de planetas neutrales, construcción/retirada de
   edificios, producción, torretas y asedio de planetas rivales.
+- Cada disparo de flota consume 1 de energía; el servidor valida el saldo y
+  comunica el rechazo cuando no hay energía o se dispara antes del intervalo.
 - Snapshots periódicos para los clientes conectados.
 - Actualizaciones de movimiento remotas interpoladas en el cliente y envío de
   snapshots de simulación limitado a 10 por segundo; las órdenes generan una
