@@ -78,6 +78,60 @@ final class RoomEngineTest {
     }
 
     @Test
+    void fleetCanEnterGridBelowAtTheClientsVisibleSouthEntryPosition() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        int currentMapY = fleet.mapY;
+        fleet.y = 0.04f;
+        fleet.targetY = 0.02f;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, fleet.mapX, currentMapY - 1,
+            0.5f, (720f - 48f - 70f) / 720f, null, null, 1280f, 720f
+        );
+
+        assertEquals(currentMapY - 1, fleet.mapY);
+        assertEquals((720f - 48f - 70f) / 720f, fleet.targetY, 0.0001f);
+    }
+
+    @Test
+    void fleetCanEnterGridToTheRightAtTheClientsVisibleEntryPosition() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        int currentMapX = fleet.mapX;
+        fleet.x = 0.04f;
+        fleet.targetX = 0.02f;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, currentMapX - 1, fleet.mapY,
+            (1280f - 48f - 12f) / 1280f, 0.5f, null, null, 1280f, 720f
+        );
+
+        assertEquals(currentMapX - 1, fleet.mapX);
+        assertEquals((1280f - 48f - 12f) / 1280f, fleet.targetX, 0.0001f);
+    }
+
+    @Test
+    void fleetCanEnterGridToTheLeftAtTheClientsVisibleEntryPosition() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        int currentMapX = fleet.mapX;
+        fleet.x = 0.94f;
+        fleet.targetX = 0.98f;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, currentMapX + 1, fleet.mapY,
+            12f / 1280f, 0.5f, null, null, 1280f, 720f
+        );
+
+        assertEquals(currentMapX + 1, fleet.mapX);
+        assertEquals(12f / 1280f, fleet.targetX, 0.0001f);
+    }
+
+    @Test
     void movementTickAdvancesAtSmoothClientCompatibleRate() {
         RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
         RoomEngine.JoinResult pilot = engine.addGuest("Pilot");

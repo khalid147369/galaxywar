@@ -693,7 +693,7 @@ final class RoomEngine {
             return;
         }
         float westThreshold = 42f / worldWidth;
-        float eastThreshold = 1f - 48f / worldWidth;
+        float eastThreshold = 1f - 90f / worldWidth;
         float southThreshold = 42f / worldHeight;
         float northThreshold = 1f - 150f / worldHeight;
         boolean atWestEdge = (fleet.x <= westThreshold || fleet.targetX <= westThreshold)
@@ -707,10 +707,10 @@ final class RoomEngine {
         if (!(atWestEdge || atEastEdge || atSouthEdge || atNorthEdge)) {
             throw new IllegalArgumentException("La flota debe alcanzar el borde antes de cambiar de cuadrícula.");
         }
-        boolean targetIsOppositeEdge = atWestEdge && targetX >= 0.94f
-            || atEastEdge && targetX <= 0.06f
-            || atSouthEdge && targetY >= 0.94f
-            || atNorthEdge && targetY <= 0.06f;
+        boolean targetIsOppositeEdge = atWestEdge && targetX >= 1f - 60f / worldWidth
+            || atEastEdge && targetX <= 12f / worldWidth
+            || atSouthEdge && targetY >= 1f - 118f / worldHeight
+            || atNorthEdge && targetY <= 12f / worldHeight;
         if (!targetIsOppositeEdge) {
             throw new IllegalArgumentException("La posición de entrada en la nueva cuadrícula no es válida.");
         }
