@@ -11,9 +11,9 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 final class RoomEngine {
-    private static final float FLEET_SPEED = 0.12f;
+    private static final float FLEET_SPEED_PIXELS = 75f;
     private static final float SHIP_RANGE = 0.42f;
-    private static final float BASE_RANGE = 0.36f;
+    private static final float BASE_RANGE = 0.6f;
     private static final int TOWER_HP = 30;
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -120,14 +120,26 @@ final class RoomEngine {
     synchronized void command(String playerId, String action, String fleetId, String targetId,
                               Integer mapX, Integer mapY, Float x, Float y, Integer index,
                               String itemType) {
+        command(
+            playerId, action, fleetId, targetId, mapX, mapY, x, y, index, itemType,
+            1280f, 720f
+        );
+    }
+
+    synchronized void command(String playerId, String action, String fleetId, String targetId,
+                              Integer mapX, Integer mapY, Float x, Float y, Integer index,
+                              String itemType, Float worldWidth, Float worldHeight) {
         RoomState.PlayerState player = requirePlayer(playerId);
         RoomState.FleetState fleet = requiresFleet(action) ? ownedFleet(player, fleetId) : null;
+        float movementWidth = worldWidth == null ? 1280f : worldWidth;
+        float movementHeight = worldHeight == null ? 720f : worldHeight;
         switch (action) {
             case "move":
                 if (mapX == null || mapY == null || x == null || y == null
                     || mapX < -3 || mapX > 3 || mapY < -3 || mapY > 3
                     || Math.abs(mapX - fleet.mapX) + Math.abs(mapY - fleet.mapY) > 1
-                    || !normalized(x) || !normalized(y)) {
+                    || !normalized(x) || !normalized(y)
+                    || !validWorldSize(movementWidth) || !validWorldSize(movementHeight)) {
                     throw new IllegalArgumentException("La orden de movimiento no es válida.");
                 }
                 validateMapTransition(fleet, mapX, mapY, x, y);
@@ -135,6 +147,8 @@ final class RoomEngine {
                 fleet.mapY = mapY;
                 fleet.targetX = x;
                 fleet.targetY = y;
+                fleet.movementWidth = movementWidth;
+                fleet.movementHeight = movementHeight;
                 fleet.moving = true;
                 break;
             case "fire":
@@ -175,26 +189,25 @@ final class RoomEngine {
                 throw new IllegalArgumentException("Orden de partida desconocida.");
         }
         state.revision++;
-        persist();
     }
 
-    synchronized void tick(float delta) {
+    synchronized boolean tick(float delta) {
         boolean changed = false;
         long now = System.currentTimeMillis();
         for (RoomState.PlayerState player : state.players.values()) {
             for (RoomState.FleetState fleet : player.fleets) {
                 if (fleet.moving) {
-                    float dx = fleet.targetX - fleet.x;
-                    float dy = fleet.targetY - fleet.y;
+                    float dx = (fleet.targetX - fleet.x) * fleet.movementWidth;
+                    float dy = (fleet.targetY - fleet.y) * fleet.movementHeight;
                     float distance = (float) Math.sqrt(dx * dx + dy * dy);
-                    float step = FLEET_SPEED * Math.min(delta, 0.1f);
+                    float step = FLEET_SPEED_PIXELS * Math.min(delta, 0.1f);
                     if (distance <= step || distance == 0f) {
                         fleet.x = fleet.targetX;
                         fleet.y = fleet.targetY;
                         fleet.moving = false;
                     } else {
-                        fleet.x += dx / distance * step;
-                        fleet.y += dy / distance * step;
+                        fleet.x += dx / distance * step / fleet.movementWidth;
+                        fleet.y += dy / distance * step / fleet.movementHeight;
                     }
                     changed = true;
                 }
@@ -204,8 +217,8 @@ final class RoomEngine {
         changed |= updatePlanetDefenses(delta, now);
         for (int index = state.projectiles.size() - 1; index >= 0; index--) {
             RoomState.ProjectileState projectile = state.projectiles.get(index);
-            float dx = projectile.targetX - projectile.x;
-            float dy = projectile.targetY - projectile.y;
+            float dx = (projectile.targetX - projectile.x) * projectile.movementWidth;
+            float dy = (projectile.targetY - projectile.y) * projectile.movementHeight;
             float distance = (float) Math.sqrt(dx * dx + dy * dy);
             float step = projectile.speed * Math.min(delta, 0.1f);
             if (distance <= step || distance == 0f) {
@@ -215,8 +228,8 @@ final class RoomEngine {
                 }
                 state.projectiles.remove(index);
             } else {
-                projectile.x += dx / distance * step;
-                projectile.y += dy / distance * step;
+                projectile.x += dx / distance * step / projectile.movementWidth;
+                projectile.y += dy / distance * step / projectile.movementHeight;
             }
             changed = true;
         }
@@ -239,6 +252,7 @@ final class RoomEngine {
         if (changed) {
             state.revision++;
         }
+        return changed;
     }
 
     synchronized String snapshotJson() {
@@ -253,9 +267,20 @@ final class RoomEngine {
                 ((com.fasterxml.jackson.databind.node.ObjectNode) playerIterator.next())
                     .remove("reconnectTokenHash");
             }
+
             return mapper.writeValueAsString(snapshot);
         } catch (Exception exception) {
             throw new IllegalStateException("No se pudo serializar el estado de sala.", exception);
+        }
+    }
+
+    synchronized RoomState persistenceSnapshot() {
+        try {
+            return mapper.readValue(mapper.writeValueAsBytes(state), RoomState.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                "No se pudo copiar el estado de sala para persistencia.", exception
+            );
         }
     }
 
@@ -279,6 +304,10 @@ final class RoomEngine {
         projectile.id = UUID.randomUUID().toString();
         projectile.ownerId = player.id;
         projectile.targetFleetId = target.id;
+        projectile.mapX = attacker.mapX;
+        projectile.mapY = attacker.mapY;
+        projectile.movementWidth = attacker.movementWidth;
+        projectile.movementHeight = attacker.movementHeight;
         projectile.x = attacker.x;
         projectile.y = attacker.y;
         projectile.targetX = target.x;
@@ -291,11 +320,15 @@ final class RoomEngine {
                 shipShot.id = UUID.randomUUID().toString();
                 shipShot.ownerId = player.id;
                 shipShot.targetFleetId = target.id;
+                shipShot.mapX = attacker.mapX;
+                shipShot.mapY = attacker.mapY;
+                shipShot.movementWidth = attacker.movementWidth;
+                shipShot.movementHeight = attacker.movementHeight;
                 shipShot.x = attacker.x;
                 shipShot.y = attacker.y;
                 shipShot.targetX = target.x;
                 shipShot.targetY = target.y;
-                shipShot.speed = 0.65f;
+                shipShot.speed = 300f;
                 shipShot.damage = 4;
                 state.projectiles.add(shipShot);
             }
@@ -755,6 +788,10 @@ final class RoomEngine {
 
     private static boolean normalized(float value) {
         return Float.isFinite(value) && value >= 0f && value <= 1f;
+    }
+
+    private static boolean validWorldSize(float value) {
+        return Float.isFinite(value) && value >= 320f && value <= 8192f;
     }
 
     private static float distance(float x1, float y1, float x2, float y2) {

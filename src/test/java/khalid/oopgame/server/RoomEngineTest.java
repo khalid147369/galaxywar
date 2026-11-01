@@ -60,6 +60,50 @@ final class RoomEngineTest {
     }
 
     @Test
+    void movementTickAdvancesAtSmoothClientCompatibleRate() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, 0, 0, 0.6f, fleet.y, null, null
+        );
+
+        assertTrue(engine.tick(0.05f));
+        assertEquals(0.083f, fleet.x, 0.0001f);
+    }
+
+    @Test
+    void verticalMovementMatchesClientPixelSpeedAtSuppliedViewportSize() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        float startY = fleet.y;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, 0, 0, fleet.x, 0.6f, null, null,
+            1920f, 1080f
+        );
+        engine.tick(0.05f);
+
+        assertEquals(3.75f, (fleet.y - startY) * 1080f, 0.001f);
+    }
+
+    @Test
+    void movementCommandsDoNotBlockOnRoomPersistence() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        int roomSavesBeforeMove = repository.roomSaveCount;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, 0, 0, 0.6f, fleet.y, null, null
+        );
+
+        assertEquals(roomSavesBeforeMove, repository.roomSaveCount);
+    }
+
+    @Test
     void serverResolvesShotsAndRejectsOutOfRangeTargets() {
         RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
         RoomEngine.JoinResult first = engine.addGuest("Pilot");
@@ -78,6 +122,34 @@ final class RoomEngineTest {
             engine.command(first.player.id, "fire", attacker.id, "unknown",
                 null, null, null, null, null, null)
         );
+        defender.x = 0.9f;
+        attacker.lastFireAt = 0L;
+        assertThrows(IllegalArgumentException.class, () ->
+            engine.command(first.player.id, "fire", attacker.id, defender.id,
+                null, null, null, null, null, null)
+        );
+    }
+
+    @Test
+    void validShotEventuallyDamagesEnemyFleet() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult first = engine.addGuest("Pilot");
+        RoomEngine.JoinResult second = engine.addGuest("Rival");
+        RoomState.FleetState attacker = first.player.fleets.get(0);
+        RoomState.FleetState defender = second.player.fleets.get(0);
+        defender.mapX = attacker.mapX;
+        defender.mapY = attacker.mapY;
+        defender.x = 0.3f;
+        defender.y = attacker.y;
+
+        engine.command(first.player.id, "fire", attacker.id, defender.id,
+            null, null, null, null, null, null);
+        for (int tick = 0; tick < 50; tick++) {
+            engine.tick(0.05f);
+        }
+
+        assertTrue(defender.baseHp < 100);
+        assertTrue(engine.state().projectiles.isEmpty());
     }
 
     @Test
@@ -270,6 +342,7 @@ final class RoomEngineTest {
 
     private static final class TestRepository implements RoomRepository {
         private final Map<String, RoomState> rooms = new HashMap<>();
+        private int roomSaveCount;
 
         @Override
         public void saveGuest(RoomState.PlayerState player) {
@@ -285,6 +358,7 @@ final class RoomEngineTest {
 
         @Override
         public void saveRoom(RoomState state) {
+            roomSaveCount++;
             rooms.put(state.code, state);
         }
 

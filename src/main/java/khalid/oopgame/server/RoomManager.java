@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
 
 final class RoomManager {
+    private static final long SNAPSHOT_INTERVAL_MILLIS = 100L;
     private final Map<String, ActiveRoom> rooms = new ConcurrentHashMap<>();
     private final Map<String, ActiveRoom> playerRooms = new ConcurrentHashMap<>();
     private final ObjectMapper mapper;
@@ -53,6 +54,7 @@ final class RoomManager {
         ActiveRoom room = loadOrFind(code);
         RoomEngine.JoinResult joined = room.engine.addGuest(name);
         attach(room, joined.player.id, channel);
+        broadcast(room);
         return joined;
     }
 
@@ -65,6 +67,7 @@ final class RoomManager {
         ActiveRoom room = loadOrFind(code);
         RoomEngine.JoinResult joined = room.engine.reconnect(playerId, token);
         attach(room, playerId, channel);
+        broadcast(room);
         return joined;
     }
 
@@ -78,10 +81,15 @@ final class RoomManager {
         Float x,
         Float y,
         Integer index,
-        String itemType
+        String itemType,
+        Float worldWidth,
+        Float worldHeight
     ) {
         ActiveRoom room = roomFor(playerId);
-        room.engine.command(playerId, action, fleetId, targetId, mapX, mapY, x, y, index, itemType);
+        room.engine.command(
+            playerId, action, fleetId, targetId, mapX, mapY, x, y, index, itemType,
+            worldWidth, worldHeight
+        );
         broadcast(room);
     }
 
@@ -90,14 +98,16 @@ final class RoomManager {
             java.util.Set<String> playerIds = new java.util.HashSet<>(
                 room.engine.state().players.keySet()
             );
-            room.engine.tick(delta);
+            boolean changed = room.engine.tick(delta);
             playerIds.removeAll(room.engine.state().players.keySet());
             for (String expiredPlayerId : playerIds) {
                 playerRooms.remove(expiredPlayerId, room);
                 room.channels.remove(expiredPlayerId);
                 repository.deleteGuest(expiredPlayerId);
             }
-            broadcast(room);
+            if (changed) {
+                broadcastIfDue(room);
+            }
         }
     }
 
@@ -105,9 +115,9 @@ final class RoomManager {
         return roomFor(playerId).engine.state().code;
     }
 
-    synchronized void persistAll() {
+    void persistAll() {
         for (ActiveRoom room : rooms.values()) {
-            repository.saveRoom(room.engine.state());
+            repository.saveRoom(room.engine.persistenceSnapshot());
         }
     }
 
@@ -177,6 +187,13 @@ final class RoomManager {
                 channel.writeAndFlush("{\"type\":\"snapshot\",\"snapshot\":" + snapshot + "}\n");
             }
         }
+        room.lastBroadcastAt = System.currentTimeMillis();
+    }
+
+    private void broadcastIfDue(ActiveRoom room) {
+        if (System.currentTimeMillis() - room.lastBroadcastAt >= SNAPSHOT_INTERVAL_MILLIS) {
+            broadcast(room);
+        }
     }
 
     private static void createUniverse(RoomState state) {
@@ -237,6 +254,7 @@ final class RoomManager {
     private static final class ActiveRoom {
         final RoomEngine engine;
         final Map<String, Channel> channels = new ConcurrentHashMap<>();
+        long lastBroadcastAt;
 
         ActiveRoom(RoomEngine engine) {
             this.engine = engine;

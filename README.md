@@ -13,6 +13,18 @@ nueva línea; no es un servidor HTTP ni WebSocket.
   reclutamiento, reclamación de planetas neutrales, construcción/retirada de
   edificios, producción, torretas y asedio de planetas rivales.
 - Snapshots periódicos para los clientes conectados.
+- Actualizaciones de movimiento remotas interpoladas en el cliente y envío de
+  snapshots de simulación limitado a 10 por segundo; las órdenes generan una
+  actualización inmediata.
+- Movimiento autoritativo a 75 píxeles por segundo, convertido según el tamaño
+  del viewport informado por el cliente, para igualar la velocidad del modo local.
+- Escrituras periódicas de PostgreSQL fuera del hilo de simulación; las órdenes
+  ya no esperan a que termine una escritura de base de datos.
+- Proyectiles interpolados y limitados al sistema estelar donde ocurre el combate.
+- Velocidad de proyectiles del servidor alineada con los 300 píxeles por segundo
+  del combate local.
+- El combate entre flotas se inicia al pulsar una flota rival o al pulsar
+  `Enter` con una flota propia seleccionada; el servidor valida alcance y daño.
 - Token de reconexión aleatorio; se guarda su hash, y el cliente intenta
   reconectar mientras la sesión siga dentro de `RECONNECT_TTL_SECONDS`.
 - Persistencia de salas y jugadores invitados con PostgreSQL y migraciones
@@ -105,13 +117,15 @@ el proyecto raíz ni el cliente en Railway.
    ROOM_MAX_PLAYERS=2
    TICK_RATE_HZ=20
    RECONNECT_TTL_SECONDS=300
-   TLS_ENABLED=true
+   TLS_ENABLED=false
    ```
 
    Railway sustituye las referencias a variables del servicio PostgreSQL. El
    tráfico entre servicios usa la red privada de Railway; `prefer` permite SSL
    si PostgreSQL lo ofrece. Si tu base de datos exige SSL, usa `require`. No
-   publiques contraseñas en el repositorio ni en el cliente.
+   publiques contraseñas en el repositorio ni en el cliente. Estas variables
+   deben añadirse en la pestaña **Variables del servicio del juego**; definirlas
+   únicamente en el servicio PostgreSQL no las expone al servidor.
 5. El servidor escucha en `0.0.0.0:PORT`. En los ajustes del servicio abre
    **Networking → TCP Proxy** y crea un proxy dirigido al puerto interno `8080`.
    Railway te dará un hostname y un puerto público; anótalos. El protocolo es
@@ -132,16 +146,23 @@ el proyecto raíz ni el cliente en Railway.
 
    Copia los resultados directamente a las variables secretas de Railway, no
    a archivos del repositorio ni al chat. Mantén y renueva el certificado antes
-   de que caduque. El cliente valida la cadena y el hostname TLS.
+   de que caduque. El cliente valida la cadena y el hostname TLS. Solo después
+   de configurar ambas variables cambia `TLS_ENABLED=true` y vuelve a desplegar.
 7. Espera a que Railway marque el despliegue como activo. Si falla el arranque,
    comprueba primero las variables `DATABASE_*`, la migración Flyway y los
    logs del servicio.
 
-Si todavía no tienes un certificado válido para un dominio controlado por ti,
-no configures el cliente con `TLS=false` para partidas públicas: el token de
-reconexión y los comandos viajarían sin cifrar. Puedes probar primero en local
-con Docker Compose y TLS desactivado, pero restringe ese puerto a tu máquina o
-red de desarrollo.
+`TLS_ENABLED=false` permite verificar que el servidor inicia, pero no es una
+configuración segura para partidas públicas: el token de reconexión y los
+comandos viajarían sin cifrar. No publiques ni uses el proxy TCP con clientes
+reales hasta configurar un certificado válido, activar `TLS_ENABLED=true` y
+verificar la conexión TLS.
+
+Si el log muestra `Required environment variable is missing: DATABASE_HOST`,
+configura `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER` y
+`DATABASE_PASSWORD` en las variables del servicio del juego usando las
+referencias a PostgreSQL del paso 4. Después aplica/redeploya los cambios para
+que Railway reinicie el contenedor con esas variables.
 
 ## Conectar y empaquetar el cliente
 

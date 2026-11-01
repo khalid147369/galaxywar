@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 final class ClientHandler extends SimpleChannelInboundHandler<String> {
+    private static final Logger LOGGER = Logger.getLogger(ClientHandler.class.getName());
     private final ObjectMapper mapper;
     private final RoomManager rooms;
 
@@ -20,6 +23,10 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
         try {
             JsonNode request = mapper.readTree(input);
             String type = requiredText(request, "type");
+            if ("create_room".equals(type) || "join_room".equals(type)
+                || "reconnect".equals(type)) {
+                LOGGER.info("Received multiplayer handshake request: " + type + ".");
+            }
             switch (type) {
                 case "create_room":
                     createRoom(context, request);
@@ -48,6 +55,7 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
         } catch (IllegalArgumentException exception) {
             send(context, error(exception.getMessage()));
         } catch (Exception exception) {
+            LOGGER.log(Level.SEVERE, "Failed to process multiplayer request.", exception);
             send(context, error("La solicitud no tiene un formato válido."));
         }
     }
@@ -90,6 +98,7 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
         } catch (Exception exception) {
             throw new IllegalStateException("Could not encode room snapshot.", exception);
         }
+        LOGGER.info("Sending joined response to multiplayer client.");
         send(context, response);
     }
 
@@ -109,7 +118,9 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
             optionalFloat(payload, "x"),
             optionalFloat(payload, "y"),
             optionalInteger(payload, "index"),
-            optionalText(payload, "itemType")
+            optionalText(payload, "itemType"),
+            optionalFloat(payload, "worldWidth"),
+            optionalFloat(payload, "worldHeight")
         );
     }
 
@@ -146,6 +157,7 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
+        LOGGER.log(Level.WARNING, "Multiplayer connection failed in the network pipeline.", cause);
         context.close();
     }
 
@@ -162,7 +174,11 @@ final class ClientHandler extends SimpleChannelInboundHandler<String> {
     }
 
     private void send(ChannelHandlerContext context, ObjectNode message) {
-        context.writeAndFlush(message.toString() + "\n");
+        context.writeAndFlush(message.toString() + "\n").addListener(future -> {
+            if (!future.isSuccess()) {
+                LOGGER.log(Level.WARNING, "Failed to write response to multiplayer client.", future.cause());
+            }
+        });
     }
 
     private static String requiredText(JsonNode node, String key) {

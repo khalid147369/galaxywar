@@ -36,6 +36,8 @@ public final class RoomState {
         public float y;
         public float targetX;
         public float targetY;
+        public float movementWidth = 1280f;
+        public float movementHeight = 720f;
         public boolean moving;
         public int baseHp = 100;
         public List<ShipState> ships = new ArrayList<>();
@@ -87,11 +89,15 @@ public final class RoomState {
         public String id;
         public String ownerId;
         public String targetFleetId;
+        public int mapX;
+        public int mapY;
         public float x;
         public float y;
         public float targetX;
         public float targetY;
-        public float speed = 0.55f;
+        public float movementWidth = 1280f;
+        public float movementHeight = 720f;
+        public float speed = 300f;
         public int damage;
     }
 }

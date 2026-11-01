@@ -43,8 +43,14 @@ public final class ServerMain {
                 thread.setDaemon(true);
                 return thread;
             });
+        java.util.concurrent.ScheduledExecutorService persistence =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "odyssey-room-persistence");
+                thread.setDaemon(true);
+                return thread;
+            });
         long tickMillis = Math.max(16L, 1000L / config.tickRateHz);
-        simulation.scheduleAtFixedRate(() -> {
+        persistence.scheduleAtFixedRate(() -> {
             try {
                 rooms.tick(tickMillis / 1000f);
             } catch (RuntimeException exception) {
@@ -61,10 +67,17 @@ public final class ServerMain {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             simulation.shutdownNow();
+            persistence.shutdown();
             try {
+                if (!persistence.awaitTermination(5L, TimeUnit.SECONDS)) {
+                    persistence.shutdownNow();
+                }
                 rooms.persistAll();
             } catch (RuntimeException exception) {
                 LOGGER.log(Level.SEVERE, "Final room persistence failed.", exception);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                LOGGER.log(Level.SEVERE, "Interrupted while waiting for room persistence.", exception);
             }
             boss.shutdownGracefully();
             workers.shutdownGracefully();
@@ -95,6 +108,7 @@ public final class ServerMain {
             channel.closeFuture().sync();
         } finally {
             simulation.shutdownNow();
+            persistence.shutdownNow();
             boss.shutdownGracefully().sync();
             workers.shutdownGracefully().sync();
             repository.close();
