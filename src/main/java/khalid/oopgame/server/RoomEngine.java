@@ -142,7 +142,9 @@ final class RoomEngine {
                     || !validWorldSize(movementWidth) || !validWorldSize(movementHeight)) {
                     throw new IllegalArgumentException("La orden de movimiento no es válida.");
                 }
-                validateMapTransition(fleet, mapX, mapY, x, y);
+                validateMapTransition(
+                    fleet, mapX, mapY, x, y, movementWidth, movementHeight
+                );
                 fleet.mapX = mapX;
                 fleet.mapY = mapY;
                 fleet.targetX = x;
@@ -683,18 +685,24 @@ final class RoomEngine {
         int nextMapX,
         int nextMapY,
         float targetX,
-        float targetY
+        float targetY,
+        float worldWidth,
+        float worldHeight
     ) {
         if (nextMapX == fleet.mapX && nextMapY == fleet.mapY) {
             return;
         }
-        boolean atWestEdge = (fleet.x <= 0.04f || fleet.targetX <= 0.04f)
+        float westThreshold = 42f / worldWidth;
+        float eastThreshold = 1f - 48f / worldWidth;
+        float southThreshold = 42f / worldHeight;
+        float northThreshold = 1f - 150f / worldHeight;
+        boolean atWestEdge = (fleet.x <= westThreshold || fleet.targetX <= westThreshold)
             && nextMapX < fleet.mapX && nextMapY == fleet.mapY;
-        boolean atEastEdge = (fleet.x >= 0.96f || fleet.targetX >= 0.96f)
+        boolean atEastEdge = (fleet.x >= eastThreshold || fleet.targetX >= eastThreshold)
             && nextMapX > fleet.mapX && nextMapY == fleet.mapY;
-        boolean atSouthEdge = (fleet.y <= 0.04f || fleet.targetY <= 0.04f)
+        boolean atSouthEdge = (fleet.y <= southThreshold || fleet.targetY <= southThreshold)
             && nextMapY < fleet.mapY && nextMapX == fleet.mapX;
-        boolean atNorthEdge = (fleet.y >= 0.96f || fleet.targetY >= 0.96f)
+        boolean atNorthEdge = (fleet.y >= northThreshold || fleet.targetY >= northThreshold)
             && nextMapY > fleet.mapY && nextMapX == fleet.mapX;
         if (!(atWestEdge || atEastEdge || atSouthEdge || atNorthEdge)) {
             throw new IllegalArgumentException("La flota debe alcanzar el borde antes de cambiar de cuadrícula.");

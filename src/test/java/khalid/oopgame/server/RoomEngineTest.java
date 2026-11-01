@@ -60,6 +60,24 @@ final class RoomEngineTest {
     }
 
     @Test
+    void fleetCanEnterGridAboveAfterReachingVisibleNorthEdge() {
+        RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
+        RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
+        RoomState.FleetState fleet = pilot.player.fleets.get(0);
+        int currentMapY = fleet.mapY;
+        fleet.y = 0.80f;
+        fleet.targetY = 0.90f;
+
+        engine.command(
+            pilot.player.id, "move", fleet.id, null, fleet.mapX, fleet.mapY + 1,
+            fleet.x, 12f / 720f, null, null, 1280f, 720f
+        );
+
+        assertEquals(currentMapY + 1, fleet.mapY);
+        assertEquals(12f / 720f, fleet.targetY, 0.0001f);
+    }
+
+    @Test
     void movementTickAdvancesAtSmoothClientCompatibleRate() {
         RoomEngine engine = new RoomEngine(room(), mapper, repository, 2, 300);
         RoomEngine.JoinResult pilot = engine.addGuest("Pilot");
